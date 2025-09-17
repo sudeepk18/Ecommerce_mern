@@ -148,14 +148,155 @@ const removeFromCart = async (req, res) => {
   }
 };
 
-// Wishlist (same as before)
-const addToWishlist = async (req, res) => { /* unchanged */ };
-const removeFromWishlist = async (req, res) => { /* unchanged */ };
-const getWishlist = async (req, res) => { /* unchanged */ };
-const loginAdmin = async (req, res) => { /* unchanged */ };
-const getUser = async (req, res) => { /* unchanged */ };
-const forgotPassword = async (req, res) => { /* unchanged */ };
-const resetPassword = async (req, res) => { /* unchanged */ };
+// Wishlist
+const addToWishlist = async (req, res) => {
+  try {
+    const user = await userModel.findById(req.userId);
+    const { itemId } = req.body;
+
+    if (!user.wishlist.includes(itemId)) {
+      user.wishlist.push(itemId);
+      await user.save();
+    }
+    res.json({ success: true, wishlist: user.wishlist });
+  } catch (error) {
+    console.log("Error while adding to wishlist: ", error);
+    res.json({ success: false, message: "Error" });
+  }
+};
+
+const removeFromWishlist = async (req, res) => {
+  try {
+    const user = await userModel.findById(req.userId);
+    const { itemId } = req.body;
+    user.wishlist = user.wishlist.filter((id) => id !== itemId);
+    await user.save();
+    res.json({ success: true, wishlist: user.wishlist });
+  } catch (error) {
+    console.log("Error while removing from wishlist: ", error);
+    res.json({ success: false, message: "Error" });
+  }
+};
+
+const getWishlist = async (req, res) => {
+  try {
+    const user = await userModel.findById(req.userId);
+    res.json({ success: true, wishlist: user.wishlist || [] });
+  } catch (error) {
+    console.log("Error while getting wishlist: ", error);
+    res.json({ success: false, message: "Error" });
+  }
+};
+
+const loginAdmin = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (email !== process.env.ADMIN_EMAIL || password !== process.env.ADMIN_PASSWORD) {
+      return res.status(400).json({ success: false, message: "Invalid credentials" });
+    }
+
+    const token = jwt.sign(
+      process.env.ADMIN_EMAIL + process.env.ADMIN_PASSWORD,
+      process.env.JWT_SECRET
+    );
+
+    res.status(200).json({ success: true, token });
+  } catch (error) {
+    console.log("Error while logging in admin: ", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const getUser = async (req, res) => {
+  try {
+    const user = await userModel.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    res.json({ success: true, user: { name: user.name, email: user.email } });
+  } catch (error) {
+    console.log("Error while getting user: ", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await userModel.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User with this email does not exist." });
+    }
+
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    user.resetPasswordToken = crypto
+      .createHash("sha256")
+      .update(resetToken)
+      .digest("hex");
+    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
+    await user.save();
+
+    const resetUrl = `http://localhost:5173/reset-password/${resetToken}`;
+    const message = `
+      <h1>Password Reset Request</h1>
+      <p>Please go to this link to reset your password:</p>
+      <a href="${resetUrl}" clicktracking="off">${resetUrl}</a>
+    `;
+
+    try {
+      await sendEmail({
+        email: user.email,
+        subject: "Password Reset Request",
+        message,
+      });
+      res.status(200).json({ success: true, message: "Password reset link sent to your email." });
+    } catch (emailError) {
+      user.resetPasswordToken = undefined;
+      user.resetPasswordExpires = undefined;
+      await user.save();
+      console.error("Email could not be sent:", emailError);
+      res.status(500).json({ success: false, message: "Email could not be sent. Please try again later." });
+    }
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const { token, password } = req.body;
+    const resetPasswordToken = crypto.createHash("sha256").update(token).digest("hex");
+
+    const user = await userModel.findOne({
+      resetPasswordToken,
+      resetPasswordExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({ success: false, message: "Invalid or expired token." });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 8 characters",
+      });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(password, salt);
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    res.status(200).json({ success: true, message: "Password has been reset successfully." });
+  } catch (error) {
+    console.error("Reset password error:", error);
+    res.status(500).json({ success: false, message: "An error occurred. Please try again." });
+  }
+};
 
 export {
   loginUser,

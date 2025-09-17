@@ -3,6 +3,7 @@ import { ShopContext } from '../context/ShopContext';
 import Title from '../components/Title';
 import { assets } from '../assets/assets';
 import axios from 'axios';
+import { toast } from 'react-toastify';
 
 const Profile = () => {
     const { navigate, setToken } = useContext(ShopContext);
@@ -12,14 +13,16 @@ const Profile = () => {
         const token = localStorage.getItem("token");
         if (token) {
             try {
-                // INFO: Using axios.post to send the token in the body for consistency
+                // Correctly sending the token in the request headers
                 const response = await axios.post("http://localhost:4000/api/user/get-user", {}, { headers: { token } });
                 if (response.data.success) {
                     setUser(response.data.user);
                 } else {
+                    toast.error("Error fetching user data.");
                     console.error("Error fetching user data:", response.data.message);
                 }
             } catch (error) {
+                toast.error("Network error while fetching user data.");
                 console.error("Network error while fetching user data:", error);
             }
         }
