@@ -1,4 +1,8 @@
+// File: backend/controllers/orderController.js
+
 import orderModel from "../models/orderModel.js";
+// INFO: Import userModel to access user cart data
+import userModel from "../models/userModel.js";
 
 const placeOrder = async (req, res) => {
   try {
@@ -9,6 +13,9 @@ const placeOrder = async (req, res) => {
       address: req.body.address,
     });
     await newOrder.save();
+
+    // INFO: Reset the user's cart after a successful order
+    await userModel.findByIdAndUpdate(req.userId, { cartData: {} });
 
     res.json({ success: true, message: "Order Placed" });
   } catch (error) {
